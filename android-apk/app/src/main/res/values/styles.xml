@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.JarvisMobile" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">#050a14</item>
+        <item name="android:statusBarColor">#050a14</item>
+        <item name="android:navigationBarColor">#050a14</item>
+    </style>
+</resources>

@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#050a14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon-192.png" />
+  <title>J.A.R.V.I.S Mobile Pro</title>
+  <style>
+    :root {
+      --bg: #050a14;
+      --bg2: #0a1426;
+      --card: rgba(13, 25, 45, 0.88);
+      --border: rgba(0, 229, 255, 0.22);
+      --cyan: #00e5ff;
+      --cyan-soft: rgba(0, 229, 255, 0.14);
+      --green: #00e676;
+      --amber: #ffab40;
+      --red: #ff5252;
+      --text: #e8f4ff;
+      --muted: #7f9bb8;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      background: radial-gradient(circle at 50% 0%, #0b1c36 0%, var(--bg) 62%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto; }
+
+    /* Top bar */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(5, 10, 20, 0.9);
+      backdrop-filter: blur(12px);
+      z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--cyan); box-shadow: 0 0 12px var(--cyan);
+    }
+    .brand h1 {
+      margin: 0; font-size: 16px; letter-spacing: 3px; font-weight: 700; color: var(--cyan);
+    }
+    .status-pill {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--cyan-soft); color: var(--cyan);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .status-pill.pc-on { border-color: rgba(0,230,118,0.45); background: rgba(0,230,118,0.12); color: var(--green); }
+
+    /* Main panes */
+    main { flex: 1; overflow: hidden; position: relative; }
+    .pane {
+      display: none; height: 100%; flex-direction: column; overflow-y: auto;
+      padding: 12px 14px 16px;
+    }
+    .pane.active { display: flex; }
+
+    /* Arc reactor orb */
+    .orb-wrap {
+      display: flex; flex-direction: column; align-items: center; padding: 10px 0 8px;
+      flex-shrink: 0;
+    }
+    .orb {
+      width: 96px; height: 96px; border-radius: 50%; cursor: pointer;
+      position: relative; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(circle, #bff9ff 0%, #00e5ff 28%, rgba(0,229,255,0.12) 64%, transparent 72%);
+      border: 2px solid rgba(0, 229, 255, 0.65);
+      box-shadow: 0 0 28px rgba(0, 229, 255, 0.35), inset 0 0 18px rgba(0, 229, 255, 0.45);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .orb::before {
+      content: ""; position: absolute; inset: -8px; border-radius: 50%;
+      border: 1.5px dashed rgba(0, 229, 255, 0.45);
+      animation: spin 12s linear infinite;
+    }
+    .orb.listening {
+      transform: scale(1.08);
+      border-color: var(--green);
+      box-shadow: 0 0 42px rgba(0, 230, 118, 0.65), inset 0 0 24px rgba(0, 230, 118, 0.6);
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+    .orb.thinking {
+      border-color: var(--amber);
+      box-shadow: 0 0 36px rgba(255, 171, 64, 0.55);
+    }
+    .orb.speaking {
+      animation: pulse 0.7s ease-in-out infinite;
+      box-shadow: 0 0 44px rgba(0, 229, 255, 0.8);
+    }
+    .orb-icon { font-size: 28px; filter: drop-shadow(0 0 6px #000); }
+    .orb-state { font-size: 12px; color: var(--muted); margin-top: 8px; letter-spacing: 0.5px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { transform: scale(1.02); } 50% { transform: scale(1.1); } }
+
+    /* Chat */
+    .chips {
+      display: flex; gap: 7px; overflow-x: auto; padding: 4px 0 8px; flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip {
+      white-space: nowrap; font-size: 12px; padding: 6px 11px; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
+    }
+    .chat-list {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+      padding: 6px 2px 10px;
+    }
+    .msg {
+      max-width: 86%; padding: 10px 13px; border-radius: 16px; font-size: 14px;
+      line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end; background: linear-gradient(135deg, #0077b6, #0096c7);
+      color: #fff; border-bottom-right-radius: 4px;
+    }
+    .msg.bot {
+      align-self: flex-start; background: var(--card); border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg img { max-width: 100%; border-radius: 10px; margin-top: 6px; display: block; }
+    .msg-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .mini-btn {
+      font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--border);
+      background: rgba(0,229,255,0.08); color: var(--cyan); cursor: pointer;
+    }
+
+    /* Composer */
+    .composer {
+      display: flex; align-items: center; gap: 7px; padding-top: 8px;
+      border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+    .composer input[type="text"] {
+      flex: 1; background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+      padding: 11px 13px; border-radius: 14px; font-size: 14px; outline: none;
+    }
+    .composer input[type="text"]:focus { border-color: var(--cyan); }
+    .icon-btn {
+      width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--card); color: var(--cyan); font-size: 18px;
+      display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+    }
+    .icon-btn.primary { background: var(--cyan); color: #04101d; border: none; font-weight: 700; }
+    .attach-preview {
+      display: none; align-items: center; gap: 8px; padding: 6px 10px; margin-bottom: 6px;
+      border-radius: 10px; background: var(--cyan-soft); border: 1px solid var(--border); font-size: 12px;
+    }
+    .attach-preview img { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; }
+
+    /* PC Control Panel */
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 12px; margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px;
+      color: var(--cyan); margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .metric {
+      background: rgba(5,10,20,0.65); border: 1px solid rgba(0,229,255,0.15);
+      border-radius: 12px; padding: 10px 8px; text-align: center;
+    }
+    .metric .val { font-size: 18px; font-weight: 700; color: var(--cyan); }
+    .metric .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .ctl-btn {
+      background: rgba(8, 19, 36, 0.92); border: 1px solid var(--border); color: var(--text);
+      border-radius: 13px; padding: 12px 6px; font-size: 12px; font-weight: 500;
+      display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer;
+    }
+    .ctl-btn:active { background: var(--cyan-soft); border-color: var(--cyan); transform: scale(0.97); }
+    .ctl-btn .em { font-size: 20px; }
+    .ctl-btn.danger { border-color: rgba(255, 82, 82, 0.45); color: #ffb3b3; }
+
+    .pc-output {
+      font-size: 13px; white-space: pre-wrap; color: var(--text);
+      background: rgba(5, 10, 20, 0.72); border-radius: 12px; padding: 10px;
+      min-height: 44px; max-height: 260px; overflow-y: auto; border: 1px solid rgba(0,229,255,0.14);
+    }
+    .pc-media img { width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--border); }
+
+    /* Notes */
+    .note-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 12px; border-radius: 12px; background: rgba(5,10,20,0.65);
+      border: 1px solid rgba(0,229,255,0.14); margin-bottom: 8px; font-size: 13px;
+    }
+    .note-del {
+      background: rgba(255,82,82,0.15); border: 1px solid rgba(255,82,82,0.4);
+      color: #ff8a80; border-radius: 8px; padding: 4px 9px; font-size: 12px; cursor: pointer;
+    }
+
+    /* Settings */
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .field input, .field select {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; border-radius: 11px; font-size: 14px; outline: none;
+    }
+    .field input:focus { border-color: var(--cyan); }
+    .row-between { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .full-btn {
+      width: 100%; padding: 12px; border-radius: 13px; border: none;
+      background: linear-gradient(135deg, #00c6ff, #0072ff); color: #fff;
+      font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 6px;
+    }
+    .full-btn.secondary {
+      background: var(--cyan-soft); color: var(--cyan); border: 1px solid var(--border);
+    }
+
+    /* Bottom nav */
+    nav {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--border);
+      background: rgba(5, 10, 20, 0.96);
+      padding: 6px 4px calc(6px + var(--safe-b));
+    }
+    .tab-btn {
+      background: none; border: none; color: var(--muted); padding: 6px 2px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: 11px; cursor: pointer;
+    }
+    .tab-btn .ti { font-size: 19px; }
+    .tab-btn.active { color: var(--cyan); font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="dot"></div>
+      <h1>J.A.R.V.I.S</h1>
+    </div>
+    <div id="pcStatusPill" class="status-pill">● Mobil AI</div>
+  </header>
+
+  <main>
+    <!-- TAB 1: STANDALONE AI VOICE & CHAT -->
+    <section id="tab-ai" class="pane active">
+      <div class="orb-wrap">
+        <div id="orb" class="orb" title="Gapirish uchun bosing">
+          <span id="orbIcon" class="orb-icon">🎙</span>
+        </div>
+        <div id="orbState" class="orb-state">Gapirish uchun markazni bosing</div>
+      </div>
+
+      <div class="chips">
+        <button class="chip" onclick="quickAsk('Bugungi kun uchun qisqa motivatsiya va reja tuzib ber')">💡 Kunlik reja</button>
+        <button class="chip" onclick="quickAsk('Ingliz tilida foydali 5 ta iborani oʻzbekcha tarjimasi bilan yoz')">🌍 Inglizcha</button>
+        <button class="chip" onclick="quickAsk('Kompyuterim holatini tekshirib ber')">📊 PC holati</button>
+        <button class="chip" onclick="quickAsk('Menga qisqa foydali maslahat ber')">⚡ Maslahat</button>
+      </div>
+
+      <div id="chatList" class="chat-list"></div>
+
+      <div id="attachPreview" class="attach-preview">
+        <img id="attachThumb" src="" alt="" />
+        <span style="flex:1">Rasm biriktirildi (OCR / tahlil)</span>
+        <button class="mini-btn" onclick="clearAttach()">✕</button>
+      </div>
+
+      <div class="composer">
+        <input type="file" id="imgInput" accept="image/*" capture="environment" style="display:none" />
+        <button class="icon-btn" onclick="document.getElementById('imgInput').click()" title="Rasm / Kamera">📷</button>
+        <input type="text" id="chatInput" placeholder="Oʻzbek tilida yozing..." autocomplete="off" />
+        <button class="icon-btn primary" onclick="sendChat()" title="Yuborish">➤</button>
+      </div>
+    </section>
+
+    <!-- TAB 2: PC REMOTE CONTROL -->
+    <section id="tab-pc" class="pane">
+      <div class="card">
+        <div class="card-title">
+          <span>💻 Kompyuter Holati</span>
+          <button class="mini-btn" onclick="refreshPcMetrics()">🔄 Yangilash</button>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div id="mCpu" class="val">—</div><div class="lbl">CPU</div></div>
+          <div class="metric"><div id="mRam" class="val">—</div><div class="lbl">RAM</div></div>
+          <div class="metric"><div id="mBat" class="val">—</div><div class="lbl">Batareya</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>🎛 Tezkor Pult</span></div>
+        <div class="btn-grid">
+          <button class="ctl-btn" onclick="runPcOp('screenshot','')"><span class="em">📸</span>Ekran</button>
+          <button class="ctl-btn" onclick="runPcOp('camera','')"><span class="em">📷</span>Kamera</button>
+          <button class="ctl-btn" onclick="runPcOp('voice_report','')"><span class="em">📞</span>Ogʻzaki hisobot</button>
+
+          <button class="ctl-btn" onclick="runPcOp('system_status','')"><span class="em">📊</span>Tizim</button>
+          <button class="ctl-btn" onclick="runPcOp('battery_disk','')"><span class="em">🔋</span>Disk / IP</button>
+          <button class="ctl-btn" onclick="runPcOp('net_status','')"><span class="em">🌐</span>Wi-Fi / Ping</button>
+
+          <button class="ctl-btn" onclick="runPcOp('volume','down')"><span class="em">🔉</span>Ovoz -</button>
+          <button class="ctl-btn" onclick="runPcOp('volume','mute')"><span class="em">🔇</span>Mute</button>
+          <button class="ctl-btn" onclick="runPcOp('volume','up')"><span class="em">🔊</span>Ovoz +</button>
+
+          <button class="ctl-btn" onclick="runPcOp('media','prev')"><span class="em">⏮</span>Oldingi</button>
+          <button class="ctl-btn" onclick="runPcOp('media','play')"><span class="em">⏯</span>Play/Pause</button>
+          <button class="ctl-btn" onclick="runPcOp('media','next')"><span class="em">⏭</span>Keyingi</button>
+
+          <button class="ctl-btn" onclick="runPcOp('brightness','down')"><span class="em">🔅</span>Yorqin -</button>
+          <button class="ctl-btn" onclick="runPcOp('brightness','up')"><span class="em">🔆</span>Yorqin +</button>
+          <button class="ctl-btn" onclick="runPcOp('list_apps','')"><span class="em">🪟</span>Oynalar</button>
+
+          <button class="ctl-btn" onclick="runPcOp('clipboard','')"><span class="em">📋</span>Bufer</button>
+          <button class="ctl-btn" onclick="runPcOp('guard_op','toggle')"><span class="em">🛡</span>Qoʻriqchi</button>
+          <button class="ctl-btn" onclick="runPcOp('weather_op','')"><span class="em">🌤</span>Ob-havo</button>
+
+          <button class="ctl-btn" onclick="promptPcOp('open_target','Qaysi dastur yoki sayt ochilsin? (masalan: chrome)')"><span class="em">🚀</span>Ochish</button>
+          <button class="ctl-btn" onclick="promptPcOp('notify_desk','Kompyuter ekraniga xabar matni:')"><span class="em">🔔</span>Xabar</button>
+          <button class="ctl-btn danger" onclick="runPcOp('lock_pc','')"><span class="em">🔒</span>Qulflash</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>📟 Natija</span></div>
+        <div id="pcOutput" class="pc-output">Kompyuterga ulanish uchun ⚙ Sozlamalar boʻlimini tekshiring yoki tugmani bosing.</div>
+        <div id="pcMedia" class="pc-media"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: NOTES -->
+    <section id="tab-notes" class="pane">
+      <div class="card">
+        <div class="card-title">
+          <span>📝 Shaxsiy Qaydlar</span>
+          <button class="mini-btn" onclick="syncNotesFromPc()">☁️ PC bilan sinxron</button>
+        </div>
+        <div class="composer" style="border:none; padding:0 0 10px;">
+          <input type="text" id="noteInput" placeholder="Yangi qayd yozing..." />
+          <button class="icon-btn primary" onclick="addLocalNote()">＋</button>
+        </div>
+        <div id="notesList"></div>
+      </div>
+    </section>
+
+    <!-- TAB 4: SETTINGS -->
+    <section id="tab-settings" class="pane">
+      <div class="card">
+        <div class="card-title"><span>🤖 Mustaqil Mobil AI (Kompyutersiz)</span></div>
+        <div class="field">
+          <label>Gemini API Key (telefoningiz xotirasida xavfsiz saqlanadi)</label>
+          <input type="password" id="cfgGeminiKey" placeholder="AIza..." />
+        </div>
+        <div class="field">
+          <label>Ovoz tili</label>
+          <select id="cfgLang">
+            <option value="uz-UZ">Oʻzbek tili (uz-UZ)</option>
+            <option value="ru-RU">Rus tili (ru-RU)</option>
+            <option value="en-US">Ingliz tili (en-US)</option>
+          </select>
+        </div>
+        <div class="field row-between">
+          <label style="margin:0">Javoblarni ovozli oʻqib berish</label>
+          <input type="checkbox" id="cfgAutoSpeak" style="width:20px;height:20px" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>💻 Uy Kompyuteriga Ulanish</span></div>
+        <div class="field">
+          <label>PC Bridge manzili (Wi-Fi yoki Internet Tunnel)</label>
+          <input type="text" id="cfgPcUrl" placeholder="http://192.168.137.72:8765" />
+        </div>
+        <div class="field">
+          <label>Xavfsizlik tokeni (PC Token)</label>
+          <input type="password" id="cfgPcToken" placeholder="Bridge token" />
+        </div>
+        <button class="full-btn" onclick="saveSettings()">💾 Sozlamalarni saqlash</button>
+        <button class="full-btn secondary" onclick="testPcConnection()">🔄 Kompyuter ulanishini tekshirish</button>
+        <button id="installBtn" class="full-btn secondary" style="display:none" onclick="installPwa()">📲 Bosh ekranga ilova qilib oʻrnatish</button>
+      </div>
+
+      <div class="card" style="font-size:12px; color:var(--muted); line-height:1.5">
+        <strong style="color:var(--cyan)">Oʻrnatish boʻyicha eslatma:</strong><br/>
+        Android Chrome'da yuqori oʻngdagi <b>⋮</b> menyu → <b>"Bosh ekranga qoʻshish" (Add to Home screen)</b> tugmasini bosing — JARVIS telefoningizda alohida ilova boʻlib oʻrnatiladi!
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="tab-btn active" onclick="switchTab('ai', this)"><span class="ti">🎙</span>JARVIS</button>
+    <button class="tab-btn" onclick="switchTab('pc', this)"><span class="ti">💻</span>Kompyuter</button>
+    <button class="tab-btn" onclick="switchTab('notes', this)"><span class="ti">📝</span>Qaydlar</button>
+    <button class="tab-btn" onclick="switchTab('settings', this)"><span class="ti">⚙</span>Sozlama</button>
+  </nav>
+</div>
+
+<script>
+const LS_CFG = 'jarvis_mobile_cfg_v1';
+const LS_CHAT = 'jarvis_mobile_chat_v1';
+const LS_NOTES = 'jarvis_mobile_notes_v1';
+
+let cfg = {
+  geminiKey: '',
+  lang: 'uz-UZ',
+  autoSpeak: true,
+  pcUrl: '',
+  pcToken: ''
+};
+let chatHistory = [];
+let notes = [];
+let attachedImage = null; // { base64, mime, dataUrl }
+let recognition = null;
+let isListening = false;
+let deferredInstall = null;
+let currentAudio = null;
+
+function loadState() {
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(LS_CFG) || '{}')); } catch {}
+  try { chatHistory = JSON.parse(localStorage.getItem(LS_CHAT) || '[]'); } catch { chatHistory = []; }
+  try { notes = JSON.parse(localStorage.getItem(LS_NOTES) || '[]'); } catch { notes = []; }
+
+  // Auto-configure PC URL & Token from query params (?pc=...&token=...&gkey=...)
+  const q = new URLSearchParams(location.search);
+  let changed = false;
+  if (q.get('pc')) { cfg.pcUrl = q.get('pc').replace(/\/+$/, ''); changed = true; }
+  if (q.get('token')) { cfg.pcToken = q.get('token'); changed = true; }
+  if (q.get('gkey')) { cfg.geminiKey = q.get('gkey'); changed = true; }
+  // If hosted directly on the PC Bridge, default pcUrl to location.origin
+  if (!cfg.pcUrl && location.protocol.startsWith('http')) {
+    cfg.pcUrl = location.origin;
+    changed = true;
+  }
+  if (changed) {
+    localStorage.setItem(LS_CFG, JSON.stringify(cfg));
+    try { history.replaceState({}, '', location.pathname); } catch {}
+  }
+
+  document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
+  document.getElementById('cfgLang').value = cfg.lang || 'uz-UZ';
+  document.getElementById('cfgAutoSpeak').checked = cfg.autoSpeak !== false;
+  document.getElementById('cfgPcUrl').value = cfg.pcUrl || '';
+  document.getElementById('cfgPcToken').value = cfg.pcToken || '';
+
+  if (chatHistory.length === 0) {
+    chatHistory.push({
+      role: 'bot',
+      text: 'Assalomu alaykum, Dilshod aka! Men J.A.R.V.I.S Mobile.\n\n• Markazdagi koʻk doirani bosib ovozli gaplashing\n• 💻 Kompyuter boʻlimidan uydagi kompyuteringizni boshqaring\n• ⚙ Sozlama boʻlimiga Gemini kalitingizni kiritsangiz, kompyuter oʻchiq paytda ham mustaqil ishlayman!'
+    });
+  }
+  renderChat();
+  renderNotes();
+  checkPcPingSilent();
+}
+
+function saveSettings() {
+  cfg.geminiKey = document.getElementById('cfgGeminiKey').value.trim();
+  cfg.lang = document.getElementById('cfgLang').value;
+  cfg.autoSpeak = document.getElementById('cfgAutoSpeak').checked;
+  cfg.pcUrl = document.getElementById('cfgPcUrl').value.trim().replace(/\/+$/, '');
+  cfg.pcToken = document.getElementById('cfgPcToken').value.trim();
+  localStorage.setItem(LS_CFG, JSON.stringify(cfg));
+  alert('✅ Sozlamalar saqlandi!');
+  checkPcPingSilent();
+}
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'pc') refreshPcMetrics();
+}
+
+function setOrb(state, label) {
+  const orb = document.getElementById('orb');
+  const icon = document.getElementById('orbIcon');
+  const st = document.getElementById('orbState');
+  orb.className = 'orb ' + (state || '');
+  icon.textContent = state === 'listening' ? '🟢' : state === 'thinking' ? '⚡' : state === 'speaking' ? '🔊' : '🎙';
+  st.textContent = label || 'Gapirish uchun markazni bosing';
+}
+
+function renderChat() {
+  const box = document.getElementById('chatList');
+  box.innerHTML = '';
+  chatHistory.slice(-40).forEach((m, idx) => {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (m.role === 'user' ? 'user' : 'bot');
+    div.textContent = m.text || '';
+    if (m.img) {
+      const im = document.createElement('img');
+      im.src = m.img;
+      div.appendChild(im);
+    }
+    if (m.role === 'bot' && m.text) {
+      const acts = document.createElement('div');
+      acts.className = 'msg-actions';
+      const b = document.createElement('button');
+      b.className = 'mini-btn';
+      b.textContent = '🔊 Oʻqish';
+      b.onclick = () => speakText(m.text);
+      acts.appendChild(b);
+      div.appendChild(acts);
+    }
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+  try { localStorage.setItem(LS_CHAT, JSON.stringify(chatHistory.slice(-40))); } catch {}
+}
+
+// Image attachment
+document.getElementById('imgInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    const base64 = dataUrl.split(',')[1];
+    attachedImage = { base64, mime: file.type || 'image/jpeg', dataUrl };
+    document.getElementById('attachThumb').src = dataUrl;
+    document.getElementById('attachPreview').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+
+function clearAttach() {
+  attachedImage = null;
+  document.getElementById('attachPreview').style.display = 'none';
+}
+
+function quickAsk(txt) {
+  document.getElementById('chatInput').value = txt;
+  sendChat();
+}
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+
+async function sendChat() {
+  const inp = document.getElementById('chatInput');
+  const text = inp.value.trim();
+  if (!text && !attachedImage) return;
+  inp.value = '';
+
+  const imgSnap = attachedImage;
+  clearAttach();
+
+  chatHistory.push({ role: 'user', text: text || '📷 Rasmni tahlil qil', img: imgSnap ? imgSnap.dataUrl : null });
+  renderChat();
+  setOrb('thinking', 'JARVIS oʻylamoqda…');
+
+  try {
+    let reply = '';
+    // Route 1: Direct Gemini API from phone (works 100% standalone even if PC is OFF!)
+    if (cfg.geminiKey) {
+      reply = await askGeminiDirect(text || 'Bu rasmda nima bor? Oʻzbek tilida tushuntirib ber.', imgSnap);
+    } else if (cfg.pcUrl && cfg.pcToken) {
+      // Route 2: Fallback via PC Bridge AI endpoint
+      const res = await fetch(cfg.pcUrl + '/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': cfg.pcToken },
+        body: JSON.stringify({
+          text: text || 'Rasmni tahlil qil',
+          image_b64: imgSnap ? imgSnap.base64 : '',
+          image_mime: imgSnap ? imgSnap.mime : ''
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'PC AI xatosi');
+      reply = data.reply || 'Javob olinmadi.';
+    } else {
+      reply = '⚙ Sozlama boʻlimiga Gemini API kalitingizni yoki uy kompyuter Bridge manzilini kiriting.';
+    }
+
+    chatHistory.push({ role: 'bot', text: reply });
+    renderChat();
+    setOrb('', 'Tayyor');
+    if (cfg.autoSpeak) speakText(reply);
+  } catch (err) {
+    chatHistory.push({ role: 'bot', text: '⚠️ Xatolik: ' + err.message });
+    renderChat();
+    setOrb('', 'Xatolik yuz berdi');
+  }
+}
+
+async function askGeminiDirect(prompt, img) {
+  const sys = 'Sen J.A.R.V.I.S san — Dilshod akaning shaxsiy mobil AI yordamchisi. Javoblarni tabiiy, aniq, qisqa va ravon oʻzbek tilida ber (agar boshqa tilda soʻralsa oʻsha tilda).';
+  const contents = [];
+  chatHistory.slice(-10, -1).forEach(m => {
+    if (!m.text) return;
+    contents.push({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    });
+  });
+  const parts = [{ text: prompt }];
+  if (img && img.base64) {
+    parts.push({ inline_data: { mime_type: img.mime, data: img.base64 } });
+  }
+  contents.push({ role: 'user', parts });
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cfg.geminiKey)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: sys }] },
+      contents
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Gemini API xatosi');
+  return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n').trim() || 'Javob boʻsh qaytdi.';
+}
+
+// Speech Recognition (Orb tap)
+document.getElementById('orb').addEventListener('click', () => {
+  stopSpeaking();
+  if (isListening && recognition) {
+    recognition.stop();
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    alert('Bu brauzer ovoz tanishni qoʻllamaydi. Android Chrome yoki JARVIS APK dan foydalaning.');
+    return;
+  }
+  recognition = new SR();
+  recognition.lang = cfg.lang || 'uz-UZ';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => { isListening = true; setOrb('listening', 'Tinglayapman… gapiring'); };
+  recognition.onresult = (e) => {
+    const said = e.results[0][0].transcript;
+    document.getElementById('chatInput').value = said;
+    sendChat();
+  };
+  recognition.onerror = (e) => { isListening = false; setOrb('', 'Ovoz xatosi: ' + e.error); };
+  recognition.onend = () => { isListening = false; if (document.getElementById('orb').classList.contains('listening')) setOrb('', 'Gapirish uchun markazni bosing'); };
+  recognition.start();
+});
+
+function stopSpeaking() {
+  try { window.speechSynthesis?.cancel(); } catch {}
+  try { window.JarvisAndroid?.stopSpeaking(); } catch {}
+  if (currentAudio) { try { currentAudio.pause(); } catch {} currentAudio = null; }
+}
+
+async function speakText(text) {
+  stopSpeaking();
+  const clean = String(text || '').replace(/[*_`#]/g, '').slice(0, 700);
+  if (!clean) return;
+
+  // 1. Best quality: PC Bridge Uzbek Neural TTS (uz-UZ-SardorNeural) if connected
+  if (cfg.pcUrl && cfg.pcToken) {
+    try {
+      setOrb('speaking', 'JARVIS gapirmoqda…');
+      const res = await fetch(cfg.pcUrl + '/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': cfg.pcToken },
+        body: JSON.stringify({ text: clean })
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
+        currentAudio.onended = () => { setOrb('', 'Tayyor'); URL.revokeObjectURL(url); };
+        currentAudio.onerror = () => setOrb('', 'Tayyor');
+        await currentAudio.play();
+        return;
+      }
+    } catch {}
+  }
+
+  // 2. Native Android APK TTS bridge
+  if (window.JarvisAndroid && typeof window.JarvisAndroid.speak === 'function') {
+    setOrb('speaking', 'JARVIS gapirmoqda…');
+    window.JarvisAndroid.speak(clean);
+    setTimeout(() => setOrb('', 'Tayyor'), Math.min(12000, clean.length * 75));
+    return;
+  }
+
+  // 3. Browser Web SpeechSynthesis fallback
+  if ('speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = cfg.lang || 'uz-UZ';
+    u.onstart = () => setOrb('speaking', 'JARVIS gapirmoqda…');
+    u.onend = () => setOrb('', 'Tayyor');
+    window.speechSynthesis.speak(u);
+  }
+}
+
+// ── PC Remote Bridge API ────────────────────────────────────────────────────
+async function checkPcPingSilent() {
+  const pill = document.getElementById('pcStatusPill');
+  if (!cfg.pcUrl || !cfg.pcToken) {
+    pill.className = 'status-pill';
+    pill.textContent = '● Mobil AI';
+    return false;
+  }
+  try {
+    const res = await fetch(cfg.pcUrl + '/api/health', {
+      headers: { 'X-Jarvis-Token': cfg.pcToken }
+    });
+    if (res.ok) {
+      pill.className = 'status-pill pc-on';
+      pill.textContent = '● PC Ulangan';
+      return true;
+    }
+  } catch {}
+  pill.className = 'status-pill';
+  pill.textContent = '● Mobil AI (PC off)';
+  return false;
+}
+
+async function testPcConnection() {
+  saveSettings();
+  const ok = await checkPcPingSilent();
+  alert(ok ? '✅ Uy kompyuteriga muvaffaqiyatli ulandi!' : '⚠️ Kompyuter Bridge topilmadi. Kompyuterda JARVIS Mobile Bridge yoqilganini va bitta Wi-Fi (yoki Tunnel URL) da ekaningizni tekshiring.');
+}
+
+async function refreshPcMetrics() {
+  if (!cfg.pcUrl || !cfg.pcToken) return;
+  try {
+    const res = await fetch(cfg.pcUrl + '/api/metrics', {
+      headers: { 'X-Jarvis-Token': cfg.pcToken }
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    document.getElementById('mCpu').textContent = (d.cpu ?? '—') + '%';
+    document.getElementById('mRam').textContent = (d.ram ?? '—') + '%';
+    document.getElementById('mBat').textContent = d.battery != null ? d.battery + '%' : 'AC';
+  } catch {}
+}
+
+function promptPcOp(action, question) {
+  const val = prompt(question);
+  if (val !== null && val.trim()) runPcOp(action, val.trim());
+}
+
+async function runPcOp(action, arg) {
+  const out = document.getElementById('pcOutput');
+  const med = document.getElementById('pcMedia');
+  if (!cfg.pcUrl || !cfg.pcToken) {
+    out.textContent = '⚠️ Avval ⚙ Sozlama boʻlimida PC Bridge manzili va tokenini kiriting.';
+    return;
+  }
+  out.textContent = '⏳ Bajarilmoqda: ' + action + '…';
+  med.innerHTML = '';
+  try {
+    const res = await fetch(cfg.pcUrl + '/api/op', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': cfg.pcToken },
+      body: JSON.stringify({ action, arg: arg || '' })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Xatolik');
+    out.textContent = d.text || d.caption || '✅ Bajarildi.';
+    if (d.image_b64) {
+      med.innerHTML = `<img src="data:${d.mime || 'image/jpeg'};base64,${d.image_b64}" alt="preview" />`;
+    }
+    if (d.audio_b64) {
+      const audio = new Audio(`data:${d.audio_mime || 'audio/ogg'};base64,${d.audio_b64}`);
+      audio.play().catch(() => {});
+    }
+    refreshPcMetrics();
+  } catch (e) {
+    out.textContent = '❌ Xatolik: ' + e.message;
+  }
+}
+
+// ── Notes ───────────────────────────────────────────────────────────────────
+function renderNotes() {
+  const box = document.getElementById('notesList');
+  box.innerHTML = '';
+  if (!notes.length) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:13px">Qaydlar yoʻq. Yuqoridan qoʻshing.</div>';
+    return;
+  }
+  notes.forEach((n, i) => {
+    const row = document.createElement('div');
+    row.className = 'note-row';
+    row.innerHTML = `<span>${i + 1}. ${escapeHtml(n.text)}</span>`;
+    const del = document.createElement('button');
+    del.className = 'note-del';
+    del.textContent = '🗑';
+    del.onclick = () => { notes.splice(i, 1); localStorage.setItem(LS_NOTES, JSON.stringify(notes)); renderNotes(); };
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+function addLocalNote() {
+  const inp = document.getElementById('noteInput');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  inp.value = '';
+  notes.unshift({ text: txt, at: new Date().toLocaleTimeString() });
+  localStorage.setItem(LS_NOTES, JSON.stringify(notes));
+  renderNotes();
+  // Also mirror to PC if connected
+  if (cfg.pcUrl && cfg.pcToken) {
+    fetch(cfg.pcUrl + '/api/op', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': cfg.pcToken },
+      body: JSON.stringify({ action: 'notes_op', arg: txt })
+    }).catch(() => {});
+  }
+}
+
+async function syncNotesFromPc() {
+  if (!cfg.pcUrl || !cfg.pcToken) { alert('PC ulanmagan.'); return; }
+  try {
+    const res = await fetch(cfg.pcUrl + '/api/notes', { headers: { 'X-Jarvis-Token': cfg.pcToken } });
+    const d = await res.json();
+    if (Array.isArray(d.notes)) {
+      notes = d.notes;
+      localStorage.setItem(LS_NOTES, JSON.stringify(notes));
+      renderNotes();
+      alert('✅ Kompyuter qaydlari yuklandi (' + notes.length + ' ta).');
+    }
+  } catch (e) { alert('Xato: ' + e.message); }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// PWA install prompt & SW
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+  document.getElementById('installBtn').style.display = 'block';
+});
+async function installPwa() {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  await deferredInstall.userChoice;
+  deferredInstall = null;
+  document.getElementById('installBtn').style.display = 'none';
+}
+
+loadState();
+</script>
+</body>
+</html>

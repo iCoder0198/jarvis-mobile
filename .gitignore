@@ -1,0 +1,10 @@
+bridge_config.json
+last_tunnel_url.txt
+bin/
+__pycache__/
+*.pyc
+.gradle/
+android-apk/.gradle/
+android-apk/build/
+android-apk/app/build/
+android-apk/local.properties
