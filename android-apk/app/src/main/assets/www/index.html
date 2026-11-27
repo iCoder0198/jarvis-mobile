@@ -382,6 +382,7 @@
           <input type="password" id="cfgPcToken" placeholder="Bridge token" />
         </div>
         <button class="full-btn" onclick="saveSettings()">💾 Sozlamalarni saqlash</button>
+        <button class="full-btn secondary" onclick="quickPairFromLink()">📋 Telegram havolasidan avtomatik toʻldirish</button>
         <button class="full-btn secondary" onclick="testPcConnection()">🔄 Kompyuter ulanishini tekshirish</button>
         <button id="installBtn" class="full-btn secondary" style="display:none" onclick="installPwa()">📲 Bosh ekranga ilova qilib oʻrnatish</button>
       </div>
@@ -560,10 +561,11 @@ async function sendChat() {
 
   try {
     let reply = '';
+    const isHttpsMixed = location.protocol === 'https:' && cfg.pcUrl && cfg.pcUrl.startsWith('http://');
     // Route 1: Direct Gemini API from phone (works 100% standalone even if PC is OFF!)
     if (cfg.geminiKey) {
       reply = await askGeminiDirect(text || 'Bu rasmda nima bor? Oʻzbek tilida tushuntirib ber.', imgSnap);
-    } else if (cfg.pcUrl && cfg.pcToken) {
+    } else if (cfg.pcUrl && cfg.pcToken && !isHttpsMixed) {
       // Route 2: Fallback via PC Bridge AI endpoint
       const res = await fetch(cfg.pcUrl + '/api/ai', {
         method: 'POST',
@@ -577,6 +579,8 @@ async function sendChat() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'PC AI xatosi');
       reply = data.reply || 'Javob olinmadi.';
+    } else if (isHttpsMixed) {
+      reply = '🔑 Avval pastdagi ⚙ Sozlama boʻlimiga Gemini API kalitingizni kiriting va saqlang — shunda bu sahifada ham mustaqil JARVIS ishlaydi!\n\n(Uy kompyuterini toʻgʻridan-toʻgʻri boshqarish uchun esa Telegramdagi JARVIS-Mobile.apk ilovasini oʻrnating — Chrome HTTPS sahifadan lokal HTTP kompyuterga ulanishni bloklaydi.)';
     } else {
       reply = '⚙ Sozlama boʻlimiga Gemini API kalitingizni yoki uy kompyuter Bridge manzilini kiriting.';
     }
@@ -591,6 +595,14 @@ async function sendChat() {
     setOrb('', 'Xatolik yuz berdi');
   }
 }
+
+const GEMINI_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.8-flash'
+];
 
 async function askGeminiDirect(prompt, img) {
   const sys = 'Sen J.A.R.V.I.S san — Dilshod akaning shaxsiy mobil AI yordamchisi. Javoblarni tabiiy, aniq, qisqa va ravon oʻzbek tilida ber (agar boshqa tilda soʻralsa oʻsha tilda).';
@@ -608,18 +620,37 @@ async function askGeminiDirect(prompt, img) {
   }
   contents.push({ role: 'user', parts });
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(cfg.geminiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: sys }] },
-      contents
-    })
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: sys }] },
+    contents
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'Gemini API xatosi');
-  return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n').trim() || 'Javob boʻsh qaytdi.';
+
+  let lastErr = 'Gemini API xatosi';
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cfg.geminiKey)}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 14000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+      if (res.ok) {
+        const out = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n').trim();
+        if (out) return out;
+      }
+      lastErr = data.error?.message || `HTTP ${res.status}`;
+      if (res.status === 401 || res.status === 403) break;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e.name === 'AbortError' ? 'Vaqt tugadi (timeout)' : (e.message || String(e));
+    }
+  }
+  throw new Error(lastErr);
 }
 
 // Speech Recognition (Orb tap)
@@ -722,10 +753,29 @@ async function checkPcPingSilent() {
   return false;
 }
 
+function quickPairFromLink() {
+  const raw = prompt('Telegramdagi JARVIS Mobile havolasini shu yerga qoʻying (paste):');
+  if (!raw) return;
+  try {
+    const u = new URL(raw.trim());
+    const pc = u.searchParams.get('pc');
+    const tok = u.searchParams.get('token');
+    if (pc) document.getElementById('cfgPcUrl').value = pc;
+    if (tok) document.getElementById('cfgPcToken').value = tok;
+    saveSettings();
+  } catch {
+    alert('Havola formati notoʻgʻri.');
+  }
+}
+
 async function testPcConnection() {
   saveSettings();
+  if (location.protocol === 'https:' && cfg.pcUrl && cfg.pcUrl.startsWith('http://')) {
+    alert('ℹ️ Chrome xavfsizlik qoidasi boʻyicha HTTPS sahifadan lokal HTTP kompyuterga ulanib boʻlmaydi.\n\nKompyuter pultini ishlatish uchun Telegramdagi JARVIS-Mobile.apk ilovasini oʻrnating (unda bu cheklov yoʻq) yoki uy Wi-Fi havolasini (' + cfg.pcUrl + ') oching.');
+    return;
+  }
   const ok = await checkPcPingSilent();
-  alert(ok ? '✅ Uy kompyuteriga muvaffaqiyatli ulandi!' : '⚠️ Kompyuter Bridge topilmadi. Kompyuterda JARVIS Mobile Bridge yoqilganini va bitta Wi-Fi (yoki Tunnel URL) da ekaningizni tekshiring.');
+  alert(ok ? '✅ Uy kompyuteriga muvaffaqiyatli ulandi!' : '⚠️ Kompyuter Bridge topilmadi. Kompyuterda JARVIS Mobile Bridge yoqilganini va bitta Wi-Fi da ekaningizni tekshiring.');
 }
 
 async function refreshPcMetrics() {
