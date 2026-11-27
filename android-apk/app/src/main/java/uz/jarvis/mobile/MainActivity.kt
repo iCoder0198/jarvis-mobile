@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
 
         webView = WebView(this)
+        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
         setContentView(webView)
 
         webView.setBackgroundColor(Color.parseColor("#050a14"))
@@ -156,36 +157,37 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         @JavascriptInterface
         fun playBase64Audio(b64: String, ext: String): Boolean {
-            return try {
-                val bytes = Base64.decode(b64, Base64.DEFAULT)
-                val safeExt = if (ext == "mp3" || ext == "ogg") ext else "wav"
-                val tmp = File(cacheDir, "jarvis_reply.$safeExt")
-                tmp.writeBytes(bytes)
-                runOnUiThread {
-                    try {
-                        tts?.stop()
-                        stopNativeAudio()
-                        val mp = MediaPlayer()
-                        mp.setAudioAttributes(
-                            AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_MEDIA)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                                .build()
-                        )
-                        mp.setDataSource(tmp.absolutePath)
-                        mp.setOnCompletionListener { stopNativeAudio() }
-                        mp.setOnErrorListener { _, _, _ -> stopNativeAudio(); true }
-                        mp.prepare()
-                        mp.start()
-                        mediaPlayer = mp
-                    } catch (_: Exception) {
-                        stopNativeAudio()
+            // Decode, write, and prepareAsync strictly OFF the UI thread — zero frame drops!
+            Thread {
+                try {
+                    val bytes = Base64.decode(b64, Base64.DEFAULT)
+                    val safeExt = if (ext == "mp3" || ext == "ogg") ext else "wav"
+                    val tmp = File(cacheDir, "jarvis_reply.$safeExt")
+                    tmp.writeBytes(bytes)
+                    runOnUiThread {
+                        try {
+                            tts?.stop()
+                            stopNativeAudio()
+                            val mp = MediaPlayer()
+                            mp.setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
+                            mp.setDataSource(tmp.absolutePath)
+                            mp.setOnPreparedListener { it.start() }
+                            mp.setOnCompletionListener { stopNativeAudio() }
+                            mp.setOnErrorListener { _, _, _ -> stopNativeAudio(); true }
+                            mp.prepareAsync()
+                            mediaPlayer = mp
+                        } catch (_: Exception) {
+                            stopNativeAudio()
+                        }
                     }
-                }
-                true
-            } catch (_: Exception) {
-                false
-            }
+                } catch (_: Exception) {}
+            }.start()
+            return true
         }
 
         @JavascriptInterface
