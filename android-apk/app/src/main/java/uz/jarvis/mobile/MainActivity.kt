@@ -6,9 +6,12 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -20,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.io.File
 import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
@@ -27,6 +31,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var webView: WebView
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var mediaPlayer: MediaPlayer? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val filePicker = registerForActivityResult(
@@ -119,30 +124,83 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val uz = Locale("uz", "UZ")
             val res = tts?.setLanguage(uz)
             if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts?.setLanguage(Locale("ru", "RU"))
+                val ru = tts?.setLanguage(Locale("ru", "RU"))
+                if (ru == TextToSpeech.LANG_MISSING_DATA || ru == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts?.setLanguage(Locale.getDefault())
+                }
             }
             ttsReady = true
         }
     }
 
+    private fun stopNativeAudio() {
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {}
+        try {
+            mediaPlayer?.release()
+        } catch (_: Exception) {}
+        mediaPlayer = null
+    }
+
     inner class AndroidBridge {
         @JavascriptInterface
-        fun speak(text: String) {
-            if (!ttsReady) return
+        fun speak(text: String): Boolean {
+            if (!ttsReady) return false
             runOnUiThread {
+                stopNativeAudio()
                 tts?.speak(text.take(700), TextToSpeech.QUEUE_FLUSH, null, "jarvis-utterance")
+            }
+            return true
+        }
+
+        @JavascriptInterface
+        fun playBase64Audio(b64: String, ext: String): Boolean {
+            return try {
+                val bytes = Base64.decode(b64, Base64.DEFAULT)
+                val safeExt = if (ext == "mp3" || ext == "ogg") ext else "wav"
+                val tmp = File(cacheDir, "jarvis_reply.$safeExt")
+                tmp.writeBytes(bytes)
+                runOnUiThread {
+                    try {
+                        tts?.stop()
+                        stopNativeAudio()
+                        val mp = MediaPlayer()
+                        mp.setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build()
+                        )
+                        mp.setDataSource(tmp.absolutePath)
+                        mp.setOnCompletionListener { stopNativeAudio() }
+                        mp.setOnErrorListener { _, _, _ -> stopNativeAudio(); true }
+                        mp.prepare()
+                        mp.start()
+                        mediaPlayer = mp
+                    } catch (_: Exception) {
+                        stopNativeAudio()
+                    }
+                }
+                true
+            } catch (_: Exception) {
+                false
             }
         }
 
         @JavascriptInterface
         fun stopSpeaking() {
-            runOnUiThread { tts?.stop() }
+            runOnUiThread {
+                tts?.stop()
+                stopNativeAudio()
+            }
         }
     }
 
     override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
+        stopNativeAudio()
         super.onDestroy()
     }
 }

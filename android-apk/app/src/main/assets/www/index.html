@@ -382,6 +382,7 @@
           <input type="password" id="cfgPcToken" placeholder="Bridge token" />
         </div>
         <button class="full-btn" onclick="saveSettings()">💾 Sozlamalarni saqlash</button>
+        <button class="full-btn secondary" onclick="testVoiceNow()">🔊 Ovozni sinash (JARVIS gapirsin)</button>
         <button class="full-btn secondary" onclick="quickPairFromLink()">📋 Telegram havolasidan avtomatik toʻldirish</button>
         <button class="full-btn secondary" onclick="testPcConnection()">🔄 Kompyuter ulanishini tekshirish</button>
         <button id="installBtn" class="full-btn secondary" style="display:none" onclick="installPwa()">📲 Bosh ekranga ilova qilib oʻrnatish</button>
@@ -547,6 +548,7 @@ document.getElementById('chatInput').addEventListener('keydown', (e) => {
 });
 
 async function sendChat() {
+  unlockAudio();
   const inp = document.getElementById('chatInput');
   const text = inp.value.trim();
   if (!text && !attachedImage) return;
@@ -680,53 +682,163 @@ document.getElementById('orb').addEventListener('click', () => {
   recognition.start();
 });
 
+let sharedAudioEl = null;
+function unlockAudio() {
+  try {
+    if (!sharedAudioEl) {
+      sharedAudioEl = new Audio();
+      sharedAudioEl.playsInline = true;
+    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      const ctx = new Ctx();
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    }
+  } catch {}
+}
+
+function testVoiceNow() {
+  unlockAudio();
+  saveSettings();
+  speakText('Assalomu alaykum, Dilshod aka! Men JARVISman, ovozim aniq eshitilyaptimi?');
+}
+
 function stopSpeaking() {
   try { window.speechSynthesis?.cancel(); } catch {}
   try { window.JarvisAndroid?.stopSpeaking(); } catch {}
   if (currentAudio) { try { currentAudio.pause(); } catch {} currentAudio = null; }
+  if (sharedAudioEl) { try { sharedAudioEl.pause(); } catch {} }
+}
+
+function pcmB64ToWavB64(pcmB64, sampleRate = 24000) {
+  const bin = atob(pcmB64);
+  const pcmLen = bin.length;
+  const buf = new ArrayBuffer(44 + pcmLen);
+  const v = new DataView(buf);
+  const w = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + pcmLen, true); w(8, 'WAVE');
+  w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, pcmLen, true);
+  const out = new Uint8Array(buf);
+  for (let i = 0; i < pcmLen; i++) out[44 + i] = bin.charCodeAt(i);
+  let str = '';
+  for (let i = 0; i < out.length; i += 8192) {
+    str += String.fromCharCode.apply(null, out.subarray(i, i + 8192));
+  }
+  return btoa(str);
+}
+
+async function playAudioBase64(b64, mime, ext) {
+  // Prefer Android APK native MediaPlayer (never blocked by autoplay, loud STREAM_MUSIC!)
+  if (window.JarvisAndroid && typeof window.JarvisAndroid.playBase64Audio === 'function') {
+    if (window.JarvisAndroid.playBase64Audio(b64, ext || 'wav')) {
+      setTimeout(() => setOrb('', 'Tayyor'), 5000);
+      return true;
+    }
+  }
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime || 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  const el = sharedAudioEl || new Audio();
+  el.src = url;
+  currentAudio = el;
+  el.onended = () => { setOrb('', 'Tayyor'); URL.revokeObjectURL(url); };
+  el.onerror = () => { setOrb('', 'Tayyor'); URL.revokeObjectURL(url); };
+  await el.play();
+  return true;
+}
+
+async function speakViaGeminiTTS(clean) {
+  if (!cfg.geminiKey) return false;
+  const ttsModels = ['gemini-3.8-flash-lite-tts', 'gemini-2.5-flash-preview-tts'];
+  const payload = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: clean }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } }
+    }
+  });
+  for (const m of ttsModels) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 14000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(cfg.geminiKey)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: ctrl.signal }
+      );
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const inline = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      if (!inline || !inline.data) continue;
+      const mime = String(inline.mimeType || 'audio/wav').toLowerCase();
+      let wavB64 = inline.data;
+      if (mime.includes('l16') || mime.includes('pcm')) {
+        wavB64 = pcmB64ToWavB64(inline.data, 24000);
+      }
+      return await playAudioBase64(wavB64, 'audio/wav', 'wav');
+    } catch {
+      clearTimeout(t);
+    }
+  }
+  return false;
 }
 
 async function speakText(text) {
   stopSpeaking();
-  const clean = String(text || '').replace(/[*_`#]/g, '').slice(0, 700);
+  const clean = String(text || '').replace(/[*_`#⚠️]/g, '').trim().slice(0, 650);
   if (!clean) return;
+  setOrb('speaking', 'JARVIS ovozi tayyorlanmoqda…');
 
-  // 1. Best quality: PC Bridge Uzbek Neural TTS (uz-UZ-SardorNeural) if connected
-  if (cfg.pcUrl && cfg.pcToken) {
+  const isHttpsMixed = location.protocol === 'https:' && cfg.pcUrl && cfg.pcUrl.startsWith('http://');
+
+  // 1. PC Bridge Uzbek Neural Voice (uz-UZ-SardorNeural) if connected & allowed
+  if (cfg.pcUrl && cfg.pcToken && !isHttpsMixed) {
     try {
-      setOrb('speaking', 'JARVIS gapirmoqda…');
       const res = await fetch(cfg.pcUrl + '/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': cfg.pcToken },
         body: JSON.stringify({ text: clean })
       });
       if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        currentAudio = new Audio(url);
-        currentAudio.onended = () => { setOrb('', 'Tayyor'); URL.revokeObjectURL(url); };
-        currentAudio.onerror = () => setOrb('', 'Tayyor');
-        await currentAudio.play();
-        return;
+        const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        setOrb('speaking', 'JARVIS gapirmoqda…');
+        if (await playAudioBase64(btoa(bin), 'audio/mpeg', 'mp3')) return;
       }
     } catch {}
   }
 
-  // 2. Native Android APK TTS bridge
-  if (window.JarvisAndroid && typeof window.JarvisAndroid.speak === 'function') {
+  // 2. Studio-quality Gemini Native TTS (works 100% standalone on phone even when PC is OFF!)
+  try {
     setOrb('speaking', 'JARVIS gapirmoqda…');
-    window.JarvisAndroid.speak(clean);
-    setTimeout(() => setOrb('', 'Tayyor'), Math.min(12000, clean.length * 75));
-    return;
+    if (await speakViaGeminiTTS(clean)) return;
+  } catch {}
+
+  // 3. Native Android APK TextToSpeech (now fixed for Android 11+ with TTS_SERVICE query!)
+  if (window.JarvisAndroid && typeof window.JarvisAndroid.speak === 'function') {
+    if (window.JarvisAndroid.speak(clean)) {
+      setOrb('speaking', 'JARVIS gapirmoqda…');
+      setTimeout(() => setOrb('', 'Tayyor'), Math.min(12000, clean.length * 75));
+      return;
+    }
   }
 
-  // 3. Browser Web SpeechSynthesis fallback
+  // 4. Browser Web SpeechSynthesis fallback
   if ('speechSynthesis' in window) {
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = cfg.lang || 'uz-UZ';
     u.onstart = () => setOrb('speaking', 'JARVIS gapirmoqda…');
     u.onend = () => setOrb('', 'Tayyor');
     window.speechSynthesis.speak(u);
+  } else {
+    setOrb('', 'Tayyor');
   }
 }
 
